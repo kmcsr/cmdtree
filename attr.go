@@ -4,11 +4,25 @@ package cmdtree
 import (
 	math "math"
 	strconv "strconv"
+	strings "strings"
 )
 
 type AttrNode0 struct{
 	Node0
 	key string
+}
+
+func NewAttrNode0(ins Node0Ins, key string)(*AttrNode0){
+	return &AttrNode0{
+		Node0: Node0{
+			Ins: ins,
+		},
+		key: key,
+	}
+}
+
+func (a *AttrNode0)Key()(string){
+	return a.key
 }
 
 type IntegerNode struct{
@@ -18,7 +32,7 @@ type IntegerNode struct{
 
 func Integer(key string, mm ...int64)(n *IntegerNode){
 	n = new(IntegerNode)
-	n.ins = n
+	n.Ins = n
 	n.key = key
 	if len(mm) > 0 {
 		n.min = mm[0]
@@ -43,19 +57,19 @@ func (a *IntegerNode)AtMax(m int64)(*IntegerNode){
 	return a
 }
 
-func (a *IntegerNode)ParseI(args ArgMap, cmd string)(_ string, err error){
+func (a *IntegerNode)ParseI(ctx *Context, cmd string)(remain string, err error){
 	var (
 		s string
 		n int64
 	)
-	s, cmd = splitNode(cmd)
+	s, remain = SplitNode(cmd)
 	n, err = strconv.ParseInt(s, 10, 64)
 	if err != nil { return }
 	if n < a.min || n > a.max {
 		return "", &ErrArgOutOfRange{a.min, a.max}
 	}
-	args[a.key] = n
-	return cmd, nil
+	ctx.Args()[a.key] = n
+	return
 }
 
 type FloatNode struct{
@@ -65,7 +79,7 @@ type FloatNode struct{
 
 func Float(key string, mm ...float64)(n *FloatNode){
 	n = new(FloatNode)
-	n.ins = n
+	n.Ins = n
 	n.key = key
 	if len(mm) > 0 {
 		n.min = mm[0]
@@ -90,19 +104,19 @@ func (a *FloatNode)AtMax(m float64)(*FloatNode){
 	return a
 }
 
-func (a *FloatNode)ParseI(args ArgMap, cmd string)(_ string, err error){
+func (a *FloatNode)ParseI(ctx *Context, cmd string)(remain string, err error){
 	var (
 		s string
 		n float64
 	)
-	s, cmd = splitNode(cmd)
+	s, remain = SplitNode(cmd)
 	n, err = strconv.ParseFloat(s, 64)
 	if err != nil { return }
 	if n < a.min || n > a.max {
 		return "", &ErrArgOutOfRange{a.min, a.max}
 	}
-	args[a.key] = n
-	return cmd, nil
+	ctx.Args()[a.key] = n
+	return
 }
 
 type BooleanNode struct{
@@ -111,23 +125,60 @@ type BooleanNode struct{
 
 func Boolean(key string)(n *BooleanNode){
 	n = new(BooleanNode)
-	n.ins = n
+	n.Ins = n
 	n.key = key
 	return
 }
 
-func (a *BooleanNode)ParseI(args ArgMap, cmd string)(_ string, err error){
+func (a *BooleanNode)ParseI(ctx *Context, cmd string)(remain string, err error){
 	var s string
-	s, cmd = splitNode(cmd)
+	s, remain = SplitNode(cmd)
 	switch s {
-	case "T", "True", "TRUE", "true":
-		args[a.key] = true
-	case "F", "False", "FALSE", "false":
-		args[a.key] = false
+	case "T", "TRUE", "True", "true":
+		ctx.Args()[a.key] = true
+	case "F", "FALSE", "False", "false":
+		ctx.Args()[a.key] = false
 	default:
-		return "", ErrUnknownArg
+		return "", &ErrUnknownArg{cmd}
 	}
-	return cmd, nil
+	return
+}
+
+func (a *BooleanNode)SuggestI(ctx *Context, cmd string)(suggestions []string){
+	if len(cmd) == 0 {
+		return []string{
+			"T", "TRUE", "True", "true",
+			"F", "FALSE", "False", "false",
+		}
+	}
+	suggestions = make([]string, 0, 8)
+	if cmd == "T" {
+		suggestions = append(suggestions, "T")
+	}
+	if strings.HasPrefix("TRUE", cmd) {
+		suggestions = append(suggestions, "TRUE")
+	}
+	if strings.HasPrefix("True", cmd) {
+		suggestions = append(suggestions, "True")
+	}
+	if strings.HasPrefix("true", cmd) {
+		suggestions = append(suggestions, "true")
+	}
+	if len(suggestions) == 0 {
+		if cmd == "F" {
+			suggestions = append(suggestions, "F")
+		}
+		if strings.HasPrefix("FALSE", cmd) {
+			suggestions = append(suggestions, "FALSE")
+		}
+		if strings.HasPrefix("False", cmd) {
+			suggestions = append(suggestions, "False")
+		}
+		if strings.HasPrefix("false", cmd) {
+			suggestions = append(suggestions, "false")
+		}
+	}
+	return
 }
 
 type TextNode struct{
@@ -137,7 +188,7 @@ type TextNode struct{
 
 func Text(key string, mm ...int)(n *TextNode){
 	n = new(TextNode)
-	n.ins = n
+	n.Ins = n
 	n.key = key
 	if len(mm) > 0 {
 		n.min = mm[0]
@@ -158,14 +209,14 @@ func (a *TextNode)MaxLen(m int)(*TextNode){
 	return a
 }
 
-func (a *TextNode)ParseI(args ArgMap, cmd string)(_ string, err error){
+func (a *TextNode)ParseI(ctx *Context, cmd string)(remain string, err error){
 	var s string
-	s, cmd = splitNode(cmd)
+	s, remain = SplitNode(cmd)
 	if (a.min > 0 && len(s) < a.min) || (a.max > 0 && len(s) > a.max) {
-		return "", ErrUnknownArg
+		return "", &ErrUnknownArg{cmd}
 	}
-	args[a.key] = s
-	return cmd, nil
+	ctx.Args()[a.key] = s
+	return remain, nil
 }
 
 type GreedyTextNode struct{
@@ -175,7 +226,7 @@ type GreedyTextNode struct{
 
 func GreedyText(key string, mm ...int)(n *GreedyTextNode){
 	n = new(GreedyTextNode)
-	n.ins = n
+	n.Ins = n
 	n.key = key
 	if len(mm) > 0 {
 		n.min = mm[0]
@@ -196,10 +247,11 @@ func (a *GreedyTextNode)MaxLen(m int)(*GreedyTextNode){
 	return a
 }
 
-func (a *GreedyTextNode)ParseI(args ArgMap, cmd string)(_ string, err error){
-	if (a.min > 0 && len(cmd) < a.min) || (a.max > 0 && len(cmd) > a.max) {
-		return "", ErrUnknownArg
+func (a *GreedyTextNode)ParseI(ctx *Context, cmd string)(_ string, err error){
+	s := cmd
+	if (a.min > 0 && len(s) < a.min) || (a.max > 0 && len(s) > a.max) {
+		return "", &ErrUnknownArg{s}
 	}
-	args[a.key] = cmd
+	ctx.Args()[a.key] = s
 	return "", nil
 }
